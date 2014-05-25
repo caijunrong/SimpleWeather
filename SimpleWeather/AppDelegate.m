@@ -7,15 +7,19 @@
 //
 
 #import "AppDelegate.h"
-
+#import "WXController.h"
+#import <TSMessage.h>
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-    // Override point for customization after application launch.
+    // 1 初始化WXController 实例，并将它设为应用的根视图控制器。 通常这个控制器是一个 UINavigationController 或者 UITabBarController, 但是在这里会使用WXController的单个实例。
+    self.window.rootViewController = [[WXController alloc] init];
     self.window.backgroundColor = [UIColor whiteColor];
     [self.window makeKeyAndVisible];
+    // 2 设置 展示 TSMessages的默认视图控制器。这么做，你就无需手动指明用哪个控制器来展示警告了。
+    [TSMessage setDefaultViewController: self.window.rootViewController];
     return YES;
 }
 
