@@ -13,9 +13,22 @@
 @property (nonatomic, strong) UIImageView *blurredImageView;
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, assign) CGFloat screenHeight;
+@property (nonatomic, strong) NSDateFormatter *hourlyFormatter;
+@property (nonatomic, strong) NSDateFormatter *dailyFormatter;
 @end
 
 @implementation WXController
+
+- (id)init {
+    if (self = [super init]) {
+        _hourlyFormatter = [[NSDateFormatter alloc] init];
+        _hourlyFormatter.dateFormat = @"h a";
+        
+        _dailyFormatter = [[NSDateFormatter alloc] init];
+        _dailyFormatter.dateFormat = @"EEEE";
+    }
+    return self;
+}
 
 - (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
 {
@@ -150,7 +163,17 @@
                                               }] 
                             // 4 同样，因为你正在处理UI界面，所以把所有东西都传递到主线程。
                             deliverOn:RACScheduler.mainThreadScheduler];
+    [[RACObserve([WXManager sharedManager], hourlyForecast)
+      deliverOn:RACScheduler.mainThreadScheduler]
+     subscribeNext:^(NSArray *newForecast) {
+         [self.tableView reloadData];
+     }];
     
+    [[RACObserve([WXManager sharedManager], dailyForecast)
+      deliverOn:RACScheduler.mainThreadScheduler]
+     subscribeNext:^(NSArray *newForecast) {
+         [self.tableView reloadData];
+     }];
     [[WXManager sharedManager] findCurrentLocation]; 
 }
 
@@ -181,8 +204,12 @@
     return 2;
 }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    // TODO: Return count of forecast
-    return 0;
+    // 1 第一部分是对的逐时预报。使用最近6小时的预预报，并添加了一个作为页眉的单元格。
+    if (section == 0) {
+        return MIN([[WXManager sharedManager].hourlyForecast count], 6) + 1;
+    }
+    // 2 接下来的部分是每日预报。使用最近6天的每日预报，并添加了一个作为页眉的单元格。
+    return MIN([[WXManager sharedManager].dailyForecast count], 6) + 1;
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *CellIdentifier = @"CellIdentifier";
@@ -196,11 +223,81 @@
     cell.textLabel.textColor = [UIColor whiteColor];
     cell.detailTextLabel.textColor = [UIColor whiteColor];
     // TODO: Setup the cell
+    if (indexPath.section == 0) {
+        // 1 每个部分的第一行是标题单元格。
+        if (indexPath.row == 0) {
+            [self configureHeaderCell:cell title:@"Hourly Forecast"];
+        }
+        else {
+            // 2 获取每小时的天气和使用自定义配置方法配置cell。
+            WXCondition *weather = [WXManager sharedManager].hourlyForecast[indexPath.row - 1];
+            [self configureHourlyCell:cell weather:weather];
+        }
+    }
+    else if (indexPath.section == 1) {
+        // 1 每个部分的第一行是标题单元格。
+        if (indexPath.row == 0) {
+            [self configureHeaderCell:cell title:@"Daily Forecast"];
+        }
+        else {
+            // 3 获取每天的天气，并使用另一个自定义配置方法配置cell。
+            WXCondition *weather = [WXManager sharedManager].dailyForecast[indexPath.row - 1];
+            [self configureDailyCell:cell weather:weather]; 
+        } 
+    }
     return cell;
 }
 #pragma mark - UITableViewDelegate
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     // TODO: Determine cell height based on screen
-    return 44;
+    NSInteger cellCount = [self tableView:tableView numberOfRowsInSection:indexPath.section];
+    return self.screenHeight / (CGFloat)cellCount;
 }
+
+
+#pragma mark - help methods
+// 1 配置和添加文本到作为section页眉单元格。你会重用此为每日每时的预测部分。
+- (void)configureHeaderCell:(UITableViewCell *)cell title:(NSString *)title {
+    cell.textLabel.font = [UIFont fontWithName:@"HelveticaNeue-Medium" size:18];
+    cell.textLabel.text = title;
+    cell.detailTextLabel.text = @"";
+    cell.imageView.image = nil;
+}
+
+// 2 格式化逐时预报的单元格。
+- (void)configureHourlyCell:(UITableViewCell *)cell weather:(WXCondition *)weather {
+    cell.textLabel.font = [UIFont fontWithName:@"HelveticaNeue-Light" size:18];
+    cell.detailTextLabel.font = [UIFont fontWithName:@"HelveticaNeue-Medium" size:18];
+    cell.textLabel.text = [self.hourlyFormatter stringFromDate:weather.date];
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%.0f°",weather.temperature.floatValue];
+    cell.imageView.image = [UIImage imageNamed:[weather imageName]];
+    cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
+}
+
+// 3 格式化每日预报的单元格。
+- (void)configureDailyCell:(UITableViewCell *)cell weather:(WXCondition *)weather {
+    cell.textLabel.font = [UIFont fontWithName:@"HelveticaNeue-Light" size:18];
+    cell.detailTextLabel.font = [UIFont fontWithName:@"HelveticaNeue-Medium" size:18];
+    cell.textLabel.text = [self.dailyFormatter stringFromDate:weather.date];
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%.0f° / %.0f°",
+                                 weather.tempHigh.floatValue,
+                                 weather.tempLow.floatValue];
+    cell.imageView.image = [UIImage imageNamed:[weather imageName]];
+    cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
+}
+
+#pragma mark - UIScrollViewDelegate
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    // 1 获取滚动视图的高度和内容偏移量。与0偏移量做比较，因此试图滚动table低于初始位置将不会影响模糊效果。
+    CGFloat height = scrollView.bounds.size.height;
+    CGFloat position = MAX(scrollView.contentOffset.y, 0.0);
+    // 2 偏移量除以高度，并且最大值为1，所以alpha上限为1。
+    CGFloat percent = MIN(position / height, 1.0);
+    // 3 当你滚动的时候，把结果值赋给模糊图像的alpha属性，来更改模糊图像。
+    self.blurredImageView.alpha = percent;
+}
+
 @end
+
+

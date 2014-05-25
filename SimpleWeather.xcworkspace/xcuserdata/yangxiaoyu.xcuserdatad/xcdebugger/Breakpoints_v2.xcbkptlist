@@ -10,11 +10,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "SimpleWeather/WXController.m"
-            timestampString = "422702438.922947"
+            timestampString = "422711240.357436"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "134"
-            endingLineNumber = "134"
+            startingLineNumber = "147"
+            endingLineNumber = "147"
             landmarkName = "-viewDidLoad"
             landmarkType = "5">
          </BreakpointContent>
